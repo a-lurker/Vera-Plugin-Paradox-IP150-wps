@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+    <specVersion>
+      <major>1</major>
+      <minor>0</minor>
+    </specVersion>
+
+    <device>
+        <deviceType>urn:schemas-a-lurker-com:device:Paradox_IP150_wps:1</deviceType>
+        <friendlyName>Paradox IP150 web page scraper</friendlyName>
+        <staticJson>D_Paradox_IP150_wps1.json</staticJson>
+        <modelDescription>IP interface</modelDescription>
+        <modelName>Generic serial</modelName>
+        <modelNumber>1.0</modelNumber>
+        <Category_Num>11</Category_Num>
+        <handleChildren>1</handleChildren>
+
+        <serviceList>
+            <service>
+                <serviceType>urn:schemas-a-lurker-com:service:Paradox_IP150_wps:1</serviceType>
+                <serviceId>urn:a-lurker-com:serviceId:Paradox_IP150_wps1</serviceId>
+                <SCPDURL>S_Paradox_IP150_wps1.xml</SCPDURL>
+            </service>
+        </serviceList>
+
+        <implementationList>
+            <implementationFile>I_Paradox_IP150_wps1.xml</implementationFile>
+        </implementationList>
+
+    </device>
+</root>

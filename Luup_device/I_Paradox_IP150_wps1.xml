@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<implementation>
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
+    <files>L_Paradox_IP150_wps1.lua</files>
+
+    <settings>
+    </settings>
+
+    <startup>luaStartUp</startup>
+
+    <actionList>
+        <action>
+        <serviceId>urn:a-lurker-com:serviceId:Paradox_IP150_wps1</serviceId>
+        <name>Arming</name>
+        <run>arming(lul_settings.mode, lul_settings.area)</run>
+        </action>
+    </actionList>
+</implementation>

@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
+
+    <serviceStateTable>
+        <stateVariable sendEvents="no">
+        <name>A_ARG_TYPE_Mode</name>
+        <shortCode>mode</shortCode>
+        <dataType>string</dataType>
+        </stateVariable>
+
+        <stateVariable sendEvents="no">
+        <name>A_ARG_TYPE_Area</name>
+        <shortCode>area</shortCode>
+        <dataType>string</dataType>
+        </stateVariable>
+    </serviceStateTable>
+
+    <actionList>
+        <action>
+            <name>Arming</name>
+            <argumentList>
+                <argument>
+                    <name>Mode</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Mode</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>Area</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_Area</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+    </actionList>
+</scpd>
