@@ -1,5 +1,5 @@
 -- a-lurker, copyright, 17 August 2016
--- Last update: May 2020
+-- Last update: July 2020
 
 -- Functionality based on work by Tertius Hyman
 -- https://github.com/Tertiush/ParadoxIP150/blob/master/IP150-MQTT.py
@@ -25,14 +25,13 @@
 
 local PLUGIN_NAME     = 'Paradox_IP150_wps'
 local PLUGIN_SID      = 'urn:a-lurker-com:serviceId:'..PLUGIN_NAME..'1'
-local PLUGIN_VERSION  = '0.55'
+local PLUGIN_VERSION  = '0.56'
 local THIS_LUL_DEVICE = nil
 
 local m_IP150pw    = 'paradox'   -- IP150 defaults to 'paradox'
 local m_keyPadCode = '1234'      -- alarm panel defaults to '1234'
 
 local PLUGIN_URL_ID   = 'al_paradox_wps_info'
-local URL_ID          = './data_request?id=lr_'..PLUGIN_URL_ID
 local m_busy          = false
 
 local m_md5Pw           = ''
@@ -54,10 +53,10 @@ local AREAS = 8
 
 --[[
     index is zone number
-    m_zones[i].zoneInUse  = '0' or '1'
-    m_zones[i].zoneStatus = '0' to '5'
-    m_zones[i].zoneOpen   = '0' or '1'
-    m_zones[i].zoneName   = string
+    m_zones[i].zoneInUse  = true,         = boolean: true/false
+    m_zones[i].zoneStatus = string: '0' to '5'
+    m_zones[i].zoneOpen   = string: '0' or '1'
+    m_zones[i].zoneName   = 'Front door', = string: 8 chars max
 ]]
 local m_zones = {}
 
@@ -75,8 +74,8 @@ local m_AlarmStatesDef = {    --               Alternate possible interpretation
 -- [10] = '10'                --              10 = Instant  NOTE: code only handles one digit for the index, not two
     }
 
--- http://bitop.luajit.org/api.html
-local bitFunctions = require('bit')
+-- http://w3.impa.br/~diego/software/luasocket/reference.html
+local socket = require('socket')
 
 -- don't change this, it won't do anything. Use the DebugEnabled flag instead
 local DEBUG_MODE = true
@@ -158,6 +157,30 @@ local function stringDump(userMsg, str)
     debug(table.concat(dmpTab))
 end
 
+-- Bitwise xor
+-- https://stackoverflow.com/questions/5977654/how-do-i-use-the-bitwise-operator-xor-in-lua
+local function bxor(a,b)
+    local p,c=1,0
+    while a>0 and b>0 do
+        local ra,rb=a%2,b%2
+        if ra~=rb then c=c+p end
+        a,b,p=(a-ra)/2,(b-rb)/2,p*2
+    end
+    if a<b then a=b end
+    while a>0 do
+        local ra=a%2
+        if ra>0 then c=c+p end
+        a,p=(a-ra)/2,p*2
+    end
+    return c
+end
+
+-- If we're using openLuup this will get a table, otherwise nil
+local function isOpenLuup()
+    local openLuup = luup.attr_get('openLuup')
+    return (openLuup ~= nil)
+end
+
 -- Returns a lower case sum or nil
 local function md5(text)
     local md5Sum = nil
@@ -212,7 +235,7 @@ local function rc4(keyText, plainText)
             j = (j + sV[i]) % 256
             -- swap values
             sV[i], sV[j] = sV[j], sV[i]
-            chars[n] = bitFunctions.bxor(sV[(sV[i] + sV[j]) % 256], chars[n])
+            chars[n] = bxor(sV[(sV[i] + sV[j]) % 256], chars[n])
         end
     else -- use classic method
         for n = 1, #chars do
@@ -220,7 +243,7 @@ local function rc4(keyText, plainText)
             j = (j + sV[i]) % 256
             -- swap values
             sV[i], sV[j] = sV[j], sV[i]
-            chars[n] = bitFunctions.bxor(sV[(sV[i] + sV[j]) % 256], chars[n])
+            chars[n] = bxor(sV[(sV[i] + sV[j]) % 256], chars[n])
         end
     end
     return string.char(unpack(chars))
@@ -277,7 +300,7 @@ local function logIn(sessionID)
     if (status ~= 0) then debug('Alarm panel inaccessible at point B') return false end
 
     if (html:find('DOCTYPE HTML')) then -- got the error msg
-        debug('Have you set the variables m_IP150pw and m_keyPadCode',50)
+        debug('Have you set the variables m_IP150pw and m_keyPadCode', 50)
         --debug(html)
         return false
     end
@@ -305,9 +328,9 @@ local function getVersioningInfo()
     -- example input to match:  "EVO192","3.00",...
     local i = 1
     for panelInfo in panelInfoStr:gmatch('"(.-)"') do
-        if     (i == 1) then m_panelInfo[i] = {'model', panelInfo}
-        elseif (i == 2) then if (panelInfo == '0.00') then panelInfo = '????' end m_panelInfo[i] = {'version', panelInfo}
-        elseif (i == 3) then m_panelInfo[i] = {'serial number', panelInfo} end
+        if     (i == 1) then m_panelInfo[i] = {'Model', panelInfo}
+        elseif (i == 2) then if (panelInfo == '0.00') then panelInfo = '????' end m_panelInfo[i] = {'Firmware version', panelInfo}
+        elseif (i == 3) then m_panelInfo[i] = {'Serial number', panelInfo} end
         i = i+1
     end
 
@@ -319,13 +342,13 @@ local function getVersioningInfo()
     -- example input to match:  ""1.32.01","020","N009","N/A","2.12",...
     i = 1
     for ipModuleInfo in ipModuleInfoStr:gmatch('"(.-)"') do
-        if     (i == 1) then m_ipModuleInfo[i] = {'firmware version', ipModuleInfo}
-        elseif (i == 2) then m_ipModuleInfo[i] = {'build',            ipModuleInfo}
-        elseif (i == 3) then m_ipModuleInfo[i] = {'unknown 1',        ipModuleInfo}
-        elseif (i == 4) then m_ipModuleInfo[i] = {'unknown 2',        ipModuleInfo}
-        elseif (i == 5) then m_ipModuleInfo[i] = {'unknown 3',        ipModuleInfo}
-        elseif (i == 6) then m_ipModuleInfo[i] = {'serial number',    ipModuleInfo}
-        elseif (i == 7) then m_ipModuleInfo[i] = {'mac address',      ipModuleInfo} end
+        if     (i == 1) then m_ipModuleInfo[i] = {'Firmware version', ipModuleInfo}
+        elseif (i == 2) then m_ipModuleInfo[i] = {'Hardware build',   ipModuleInfo}
+        elseif (i == 3) then m_ipModuleInfo[i] = {'ECO',              ipModuleInfo}
+        elseif (i == 4) then m_ipModuleInfo[i] = {'Serial boot',      ipModuleInfo}
+        elseif (i == 5) then m_ipModuleInfo[i] = {'IP boot',          ipModuleInfo}
+        elseif (i == 6) then m_ipModuleInfo[i] = {'Serial number',    ipModuleInfo}
+        elseif (i == 7) then m_ipModuleInfo[i] = {'MAC address',      ipModuleInfo} end
         i = i+1
     end
 
@@ -392,16 +415,17 @@ local function getSetUp()
     for zoneInfo in zoneNamesStr:gmatch('([01],".-)"') do
         i = i+1
 
-        local zoneInUse, zoneName = zoneInfo:match('([01])," ?(.*)')
+        local zoneInUseStr, zoneName = zoneInfo:match('([01])," ?(.*)')
+        local zoneInUse = (zoneInUseStr == '1')
         m_zones[i] = {
             ['zoneInUse']  = zoneInUse,
             ['zoneStatus'] = '?',  -- force update of zone at start up
             ['zoneOpen']   = '?',
             ['zoneName']   = zoneName
         }
-        -- debug(tostring(i)..': '..m_zones[i].zoneInUse..','..m_zones[i].zoneStatus..','..m_zones[i].zoneOpen..','..m_zones[i].zoneName)
+        -- debug(tostring(i)..': '..tostring(m_zones[i].zoneInUse)..','..m_zones[i].zoneStatus..','..m_zones[i].zoneOpen..','..m_zones[i].zoneName)
 
-        if (zoneInUse == '1') then ZonesInUse = ZonesInUse+1 end
+        if (zoneInUse) then ZonesInUse = ZonesInUse+1 end
     end
     updateVariable('ZonesTotal', i)
     updateVariable('ZonesInUse', ZonesInUse)
@@ -471,6 +495,8 @@ end
 function pollParadoxAlarm()
     if (m_PollEnable ~= '1') then return end
 
+    local startTime = socket.gettime()*1000
+
     -- get the alarm status web page
     local timeOut = 1
     local status, html = luup.inet.wget('http://'..m_ipAddress..'/statuslive.html', timeOut)
@@ -486,15 +512,18 @@ function pollParadoxAlarm()
         -- zoneStatusStr will be found to be nil but it should work OK next time around
         checkForRedirects(html)
 
-        -- update the master zone table with the current status of each zone
-        -- skip the first 350 chars to speed things up a little - capture actually starts at 403
-        local zoneStatusStr = html:match('tbl_statuszone = new Array%((.-)%);', 350)
+        -- Update the master zone table with the current status of each zone.
+        -- Skip the first 350 chars to speed things up a little - capture actually starts at 403.
+        -- local zoneStatusStr = html:match('tbl_statuszone = new Array%((.-)%);', 370)
+        local startIdx1, _, zoneStatusStr = html:find('tbl_statuszone = new Array%((.-)%);', 370)
 
         -- This can fail if the poll interval is too long (abt > 6 secs). The connection is then terminated by the IP150.
         -- This msg is returned: 'You must activate your javascript to use the IP module web page feature...'
         if (not zoneStatusStr) then
             debug('Zone status parse fail; possible intermediate log in occurred')
         else
+            debug('tbl_statuszone startIdx = '..tonumber(startIdx1))
+
             --[[ zoneStatus =                                         Alternate possible interpretations ??:
             0   = Closed                                              0 = In agreement
             1   = Open                                                1 = In agreement
@@ -525,16 +554,19 @@ function pollParadoxAlarm()
                          m_zones[i].zoneOpen = '0'
                     end
 
-                    debug('Zone_'..string.format('%03i', i)..': '..m_zones[i].zoneName..' is now '..zoneState, 50)
-                    luup.variable_set(PLUGIN_SID, 'Zone_'..string.format('%03i', i), m_zones[i].zoneOpen, THIS_LUL_DEVICE)
+                    debug(string.format('Zone_%03i: %s is now %s', i, m_zones[i].zoneName, zoneState, 50))
+                    luup.variable_set(PLUGIN_SID, string.format('Zone_%03i', i), m_zones[i].zoneOpen, THIS_LUL_DEVICE)
                 end
-                -- debug(tostring(i)..': '..m_zones[i].zoneInUse..','..m_zones[i].zoneStatus..','..m_zones[i].zoneOpen..','..m_zones[i].zoneName)
+                -- debug(tostring(i)..': '..tostring(m_zones[i].zoneInUse)..','..m_zones[i].zoneStatus..','..m_zones[i].zoneOpen..','..m_zones[i].zoneName)
                 i = i+1
             end
 
-            -- get the alarm states from the web page
-            local alarmStateStr = html:match('tbl_useraccess = new Array%((.-)%);')
-            --debug(alarmStateStr)
+            -- Get the alarm states from the web page.
+            -- Skip the first 470 chars to speed things up a little - capture actually starts at 846 for
+            -- an EVO 192 but less for EVO48, so we'll be start a lot eaarlier to allow both to work.
+            -- local alarmStateStr = html:match('tbl_useraccess = new Array%((.-)%);')
+            local startIdx2, _, alarmStateStr = html:find('tbl_useraccess = new Array%((.-)%);', 470)
+            debug('tbl_useraccess startIdx = '..tonumber(startIdx2))
 
             local i = 1
             for areaAlarmState in alarmStateStr:gmatch('(%d)') do
@@ -555,6 +587,9 @@ function pollParadoxAlarm()
             end
         end
     end
+
+    local endTime = socket.gettime()*1000
+    debug(string.format('Elapsed time: %.2f msec\n', endTime - startTime))
 
 --[[
     -- for test purposes only
@@ -663,16 +698,16 @@ end
 
 -- Get the list of zones for the web page
 local function listZones()
-    local openClosed = ''
-    local strTab = {}
+    local strTab = {'Zone info:'}
+    table.insert(strTab, 'Zone   #   Open  Label')
     for k,v in ipairs(m_zones) do
-        openClosed = ''
-        if (v.zoneInUse == '1') then openClosed = '   '..v.zoneOpen end
-        table.insert(strTab, 'Zone_'..string.format('%03i', k)..openClosed..'   '..v.zoneName)
+        if (v.zoneInUse) then
+            table.insert(strTab, string.format('Zone_%03i    %-5s%-20s', k, v.zoneOpen, v.zoneName))
+        else
+            table.insert(strTab, string.format('Zone_%03i   ---', k))
+        end
     end
-
     if (#strTab ~= 0) then return table.concat(strTab,'\n') end
-
     return 'Not ready - try again in a minute or so.'
 end
 
@@ -746,11 +781,6 @@ function luaStartUp(lul_device)
     debug('Initialising plugin: '..PLUGIN_NAME)
     debug('Using: '.._VERSION)   -- returns the string: 'Lua x.y'
 
-    if (bitFunctions == nil) then
-        debug('Bit library not found',1)
-        return false, 'Bit library not found', PLUGIN_NAME
-    end
-
     -- set up some defaults:
     updateVariable('PluginVersion', PLUGIN_VERSION)
 
@@ -801,6 +831,9 @@ function luaStartUp(lul_device)
         debug('md5sum command probably not present')
         return false, 'md5sum call failure at point A', PLUGIN_NAME
     end
+
+    -- Vera doesn't allow delay values less than one second or fractional values. openLuup does.
+    if (isOpenLuup()) then m_PollInterval = 0.5 end
 
     local START_UP_DELAY_SECS = 45
     luup.call_delay('paradoxAlarmStartUpDelay', START_UP_DELAY_SECS)
