@@ -14,8 +14,6 @@ This plugin was tested using an IP module with firmware version: 1.32.01 Later v
 - May NOT work??   4.x <= version < 4.40.004 - SWAN (Paradox cloud) connection.
 - May work??       version >= 4.40.004 - Local connection, SWAN (Paradox cloud) connection
 
-This plugin uses a bit library. The latest Vera firmwares have a bit library already installed but openLuup needs one to be installed.
-
 Some versions of http.Lua can result in the plugin being non operational. The log file can indicate this possible outcome.
 
 Before installing the plugin you need to set up these variables in the file 'L_Paradox_IP150_wps1.lua' to suit your alarm before uploading the file to Vera. Make sure to use a text editor, such as Notepad++ or similar:
